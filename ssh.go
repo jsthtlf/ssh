@@ -35,6 +35,9 @@ type Option func(*Server) error
 // Handler is a callback for handling established SSH sessions.
 type Handler func(Session)
 
+// NoClientAuthHandler is a callback for performing none authentication.
+type NoClientAuthHandler func(ctx Context) error
+
 // BannerHandler is a callback for displaying the server banner.
 type BannerHandler func(ctx Context) string
 

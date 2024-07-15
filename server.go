@@ -38,7 +38,13 @@ type Server struct {
 	HostSigners []Signer // private keys for the host key, must have at least one
 	Version     string   // server version to be sent before the initial handshake
 	Banner      string   // server banner
+	// MaxAuthTries specifies the maximum number of authentication attempts
+	// permitted per connection. If set to a negative number, the number of
+	// attempts are unlimited. If set to zero, the number of attempts are limited
+	// to 6.
+	MaxAuthTries int
 
+	NoClientAuthHandler           NoClientAuthHandler           // none authentication handler
 	BannerHandler                 BannerHandler                 // server banner handler, overrides Banner
 	KeyboardInteractiveHandler    KeyboardInteractiveHandler    // keyboard-interactive authentication handler
 	PasswordHandler               PasswordHandler               // password authentication handler
@@ -137,6 +143,13 @@ func (srv *Server) config(ctx Context) *gossh.ServerConfig {
 	if srv.Banner != "" {
 		config.BannerCallback = func(_ gossh.ConnMetadata) string {
 			return srv.Banner
+		}
+	}
+	config.MaxAuthTries = srv.MaxAuthTries
+	if srv.NoClientAuthHandler != nil {
+		config.NoClientAuthCallback = func(conn gossh.ConnMetadata) (*gossh.Permissions, error) {
+			applyConnMetadata(ctx, conn)
+			return ctx.Permissions().Permissions, srv.NoClientAuthHandler(ctx)
 		}
 	}
 	if srv.BannerHandler != nil {

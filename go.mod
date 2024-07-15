@@ -1,4 +1,4 @@
-module github.com/gliderlabs/ssh
+module github.com/jsthtlf/ssh
 
 go 1.17
 

@@ -41,6 +41,54 @@ type NoClientAuthHandler func(ctx Context) error
 // BannerHandler is a callback for displaying the server banner.
 type BannerHandler func(ctx Context) string
 
+// AuthHandlers defines server-side authentication callbacks.
+type AuthHandlers struct {
+	KeyboardInteractiveHandler KeyboardInteractiveHandler // keyboard-interactive authentication handler
+	PasswordHandler            PasswordHandler            // password authentication handler
+	PublicKeyHandler           PublicKeyHandler           // public key authentication handler
+}
+
+func (s *AuthHandlers) getNextAuth(ctx Context) error {
+	if s.PasswordHandler == nil && s.PublicKeyHandler == nil && s.KeyboardInteractiveHandler == nil {
+		return nil
+	}
+	callbacks := gossh.ServerAuthCallbacks{}
+	if s.PasswordHandler != nil {
+		callbacks.PasswordCallback = func(conn gossh.ConnMetadata, password []byte) (*gossh.Permissions, error) {
+			applyConnMetadata(ctx, conn)
+			ok, nextAuth := s.PasswordHandler(ctx, string(password))
+			if !ok {
+				return ctx.Permissions().Permissions, ErrPermissionDenied
+			}
+			return ctx.Permissions().Permissions, nextAuth.getNextAuth(ctx)
+		}
+	}
+	if s.PublicKeyHandler != nil {
+		callbacks.PublicKeyCallback = func(conn gossh.ConnMetadata, key gossh.PublicKey) (*gossh.Permissions, error) {
+			applyConnMetadata(ctx, conn)
+			ok, nextAuth := s.PublicKeyHandler(ctx, key)
+			if !ok {
+				return ctx.Permissions().Permissions, ErrPermissionDenied
+			}
+			ctx.SetValue(ContextKeyPublicKey, key)
+			return ctx.Permissions().Permissions, nextAuth.getNextAuth(ctx)
+		}
+	}
+	if s.KeyboardInteractiveHandler != nil {
+		callbacks.KeyboardInteractiveCallback = func(conn gossh.ConnMetadata, challenger gossh.KeyboardInteractiveChallenge) (*gossh.Permissions, error) {
+			applyConnMetadata(ctx, conn)
+			ok, nextAuth := s.KeyboardInteractiveHandler(ctx, challenger)
+			if !ok {
+				return ctx.Permissions().Permissions, ErrPermissionDenied
+			}
+			return ctx.Permissions().Permissions, nextAuth.getNextAuth(ctx)
+		}
+	}
+	return &gossh.PartialSuccessError{
+		Next: callbacks,
+	}
+}
+
 // PublicKeyHandler is a callback for performing public key authentication.
 type PublicKeyHandler func(ctx Context, key PublicKey) (bool, AuthHandlers)
 
@@ -49,6 +97,9 @@ type PasswordHandler func(ctx Context, password string) (bool, AuthHandlers)
 
 // KeyboardInteractiveHandler is a callback for performing keyboard-interactive authentication.
 type KeyboardInteractiveHandler func(ctx Context, challenger gossh.KeyboardInteractiveChallenge) (bool, AuthHandlers)
+
+// AuthLogHandler is a callback for logging all authentication attemps.
+type AuthLogHandler func(ctx Context, method string, err error)
 
 // PtyCallback is a hook for allowing PTY sessions.
 type PtyCallback func(ctx Context, pty Pty) bool

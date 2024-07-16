@@ -29,54 +29,6 @@ var DefaultChannelHandlers = map[string]ChannelHandler{
 	"session": DefaultSessionHandler,
 }
 
-// AuthHandlers defines server-side authentication callbacks.
-type AuthHandlers struct {
-	KeyboardInteractiveHandler KeyboardInteractiveHandler // keyboard-interactive authentication handler
-	PasswordHandler            PasswordHandler            // password authentication handler
-	PublicKeyHandler           PublicKeyHandler           // public key authentication handler
-}
-
-func (s *AuthHandlers) getNextAuth(ctx Context) error {
-	if s.PasswordHandler == nil && s.PublicKeyHandler == nil && s.KeyboardInteractiveHandler == nil {
-		return nil
-	}
-	callbacks := gossh.ServerAuthCallbacks{}
-	if s.PasswordHandler != nil {
-		callbacks.PasswordCallback = func(conn gossh.ConnMetadata, password []byte) (*gossh.Permissions, error) {
-			applyConnMetadata(ctx, conn)
-			ok, nextAuth := s.PasswordHandler(ctx, string(password))
-			if !ok {
-				return ctx.Permissions().Permissions, ErrPermissionDenied
-			}
-			return ctx.Permissions().Permissions, nextAuth.getNextAuth(ctx)
-		}
-	}
-	if s.PublicKeyHandler != nil {
-		callbacks.PublicKeyCallback = func(conn gossh.ConnMetadata, key gossh.PublicKey) (*gossh.Permissions, error) {
-			applyConnMetadata(ctx, conn)
-			ok, nextAuth := s.PublicKeyHandler(ctx, key)
-			if !ok {
-				return ctx.Permissions().Permissions, ErrPermissionDenied
-			}
-			ctx.SetValue(ContextKeyPublicKey, key)
-			return ctx.Permissions().Permissions, nextAuth.getNextAuth(ctx)
-		}
-	}
-	if s.KeyboardInteractiveHandler != nil {
-		callbacks.KeyboardInteractiveCallback = func(conn gossh.ConnMetadata, challenger gossh.KeyboardInteractiveChallenge) (*gossh.Permissions, error) {
-			applyConnMetadata(ctx, conn)
-			ok, nextAuth := s.KeyboardInteractiveHandler(ctx, challenger)
-			if !ok {
-				return ctx.Permissions().Permissions, ErrPermissionDenied
-			}
-			return ctx.Permissions().Permissions, nextAuth.getNextAuth(ctx)
-		}
-	}
-	return &gossh.PartialSuccessError{
-		Next: callbacks,
-	}
-}
-
 // Server defines parameters for running an SSH server. The zero value for
 // Server is a valid configuration. When both PasswordHandler and
 // PublicKeyHandler are nil, no client authentication is performed.
@@ -95,6 +47,7 @@ type Server struct {
 	NoClientAuthHandler           NoClientAuthHandler           // none authentication handler
 	BannerHandler                 BannerHandler                 // server banner handler, overrides Banner
 	AuthHandlers                  AuthHandlers                  // authentications handlers
+	AuthLogHandler                AuthLogHandler                // callback for logging all authentication attempts
 	PtyCallback                   PtyCallback                   // callback for allowing PTY sessions, allows all if nil
 	ConnCallback                  ConnCallback                  // optional callback for wrapping net.Conn before handling
 	LocalPortForwardingCallback   LocalPortForwardingCallback   // callback for allowing local port forwarding, denies all if nil
@@ -235,6 +188,14 @@ func (srv *Server) config(ctx Context) *gossh.ServerConfig {
 			return ctx.Permissions().Permissions, nextAuth.getNextAuth(ctx)
 		}
 	}
+
+	if srv.AuthLogHandler != nil {
+		config.AuthLogCallback = func(conn gossh.ConnMetadata, method string, err error) {
+			applyConnMetadata(ctx, conn)
+			srv.AuthLogHandler(ctx, method, err)
+		}
+	}
+
 	return config
 }
 

@@ -3,7 +3,6 @@ package ssh
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net"
 	"sync"
 	"time"
@@ -14,6 +13,7 @@ import (
 // ErrServerClosed is returned by the Server's Serve, ListenAndServe,
 // and ListenAndServeTLS methods after a call to Shutdown or Close.
 var ErrServerClosed = errors.New("ssh: Server closed")
+var ErrPermissionDenied = errors.New("permission denied")
 
 type SubsystemHandler func(s Session)
 
@@ -27,6 +27,54 @@ type ChannelHandler func(srv *Server, conn *gossh.ServerConn, newChan gossh.NewC
 
 var DefaultChannelHandlers = map[string]ChannelHandler{
 	"session": DefaultSessionHandler,
+}
+
+// AuthHandlers defines server-side authentication callbacks.
+type AuthHandlers struct {
+	KeyboardInteractiveHandler KeyboardInteractiveHandler // keyboard-interactive authentication handler
+	PasswordHandler            PasswordHandler            // password authentication handler
+	PublicKeyHandler           PublicKeyHandler           // public key authentication handler
+}
+
+func (s *AuthHandlers) getNextAuth(ctx Context) error {
+	if s.PasswordHandler == nil && s.PublicKeyHandler == nil && s.KeyboardInteractiveHandler == nil {
+		return nil
+	}
+	callbacks := gossh.ServerAuthCallbacks{}
+	if s.PasswordHandler != nil {
+		callbacks.PasswordCallback = func(conn gossh.ConnMetadata, password []byte) (*gossh.Permissions, error) {
+			applyConnMetadata(ctx, conn)
+			ok, nextAuth := s.PasswordHandler(ctx, string(password))
+			if !ok {
+				return ctx.Permissions().Permissions, ErrPermissionDenied
+			}
+			return ctx.Permissions().Permissions, nextAuth.getNextAuth(ctx)
+		}
+	}
+	if s.PublicKeyHandler != nil {
+		callbacks.PublicKeyCallback = func(conn gossh.ConnMetadata, key gossh.PublicKey) (*gossh.Permissions, error) {
+			applyConnMetadata(ctx, conn)
+			ok, nextAuth := s.PublicKeyHandler(ctx, key)
+			if !ok {
+				return ctx.Permissions().Permissions, ErrPermissionDenied
+			}
+			ctx.SetValue(ContextKeyPublicKey, key)
+			return ctx.Permissions().Permissions, nextAuth.getNextAuth(ctx)
+		}
+	}
+	if s.KeyboardInteractiveHandler != nil {
+		callbacks.KeyboardInteractiveCallback = func(conn gossh.ConnMetadata, challenger gossh.KeyboardInteractiveChallenge) (*gossh.Permissions, error) {
+			applyConnMetadata(ctx, conn)
+			ok, nextAuth := s.KeyboardInteractiveHandler(ctx, challenger)
+			if !ok {
+				return ctx.Permissions().Permissions, ErrPermissionDenied
+			}
+			return ctx.Permissions().Permissions, nextAuth.getNextAuth(ctx)
+		}
+	}
+	return &gossh.PartialSuccessError{
+		Next: callbacks,
+	}
 }
 
 // Server defines parameters for running an SSH server. The zero value for
@@ -46,9 +94,7 @@ type Server struct {
 
 	NoClientAuthHandler           NoClientAuthHandler           // none authentication handler
 	BannerHandler                 BannerHandler                 // server banner handler, overrides Banner
-	KeyboardInteractiveHandler    KeyboardInteractiveHandler    // keyboard-interactive authentication handler
-	PasswordHandler               PasswordHandler               // password authentication handler
-	PublicKeyHandler              PublicKeyHandler              // public key authentication handler
+	AuthHandlers                  AuthHandlers                  // authentications handlers
 	PtyCallback                   PtyCallback                   // callback for allowing PTY sessions, allows all if nil
 	ConnCallback                  ConnCallback                  // optional callback for wrapping net.Conn before handling
 	LocalPortForwardingCallback   LocalPortForwardingCallback   // callback for allowing local port forwarding, denies all if nil
@@ -134,7 +180,7 @@ func (srv *Server) config(ctx Context) *gossh.ServerConfig {
 	for _, signer := range srv.HostSigners {
 		config.AddHostKey(signer)
 	}
-	if srv.PasswordHandler == nil && srv.PublicKeyHandler == nil && srv.KeyboardInteractiveHandler == nil {
+	if srv.AuthHandlers.PasswordHandler == nil && srv.AuthHandlers.PublicKeyHandler == nil && srv.AuthHandlers.KeyboardInteractiveHandler == nil {
 		config.NoClientAuth = true
 	}
 	if srv.Version != "" {
@@ -158,32 +204,35 @@ func (srv *Server) config(ctx Context) *gossh.ServerConfig {
 			return srv.BannerHandler(ctx)
 		}
 	}
-	if srv.PasswordHandler != nil {
+	if srv.AuthHandlers.PasswordHandler != nil {
 		config.PasswordCallback = func(conn gossh.ConnMetadata, password []byte) (*gossh.Permissions, error) {
 			applyConnMetadata(ctx, conn)
-			if ok := srv.PasswordHandler(ctx, string(password)); !ok {
-				return ctx.Permissions().Permissions, fmt.Errorf("permission denied")
+			ok, nextAuth := srv.AuthHandlers.PasswordHandler(ctx, string(password))
+			if !ok {
+				return ctx.Permissions().Permissions, ErrPermissionDenied
 			}
-			return ctx.Permissions().Permissions, nil
+			return ctx.Permissions().Permissions, nextAuth.getNextAuth(ctx)
 		}
 	}
-	if srv.PublicKeyHandler != nil {
+	if srv.AuthHandlers.PublicKeyHandler != nil {
 		config.PublicKeyCallback = func(conn gossh.ConnMetadata, key gossh.PublicKey) (*gossh.Permissions, error) {
 			applyConnMetadata(ctx, conn)
-			if ok := srv.PublicKeyHandler(ctx, key); !ok {
-				return ctx.Permissions().Permissions, fmt.Errorf("permission denied")
+			ok, nextAuth := srv.AuthHandlers.PublicKeyHandler(ctx, key)
+			if !ok {
+				return ctx.Permissions().Permissions, ErrPermissionDenied
 			}
 			ctx.SetValue(ContextKeyPublicKey, key)
-			return ctx.Permissions().Permissions, nil
+			return ctx.Permissions().Permissions, nextAuth.getNextAuth(ctx)
 		}
 	}
-	if srv.KeyboardInteractiveHandler != nil {
+	if srv.AuthHandlers.KeyboardInteractiveHandler != nil {
 		config.KeyboardInteractiveCallback = func(conn gossh.ConnMetadata, challenger gossh.KeyboardInteractiveChallenge) (*gossh.Permissions, error) {
 			applyConnMetadata(ctx, conn)
-			if ok := srv.KeyboardInteractiveHandler(ctx, challenger); !ok {
-				return ctx.Permissions().Permissions, fmt.Errorf("permission denied")
+			ok, nextAuth := srv.AuthHandlers.KeyboardInteractiveHandler(ctx, challenger)
+			if !ok {
+				return ctx.Permissions().Permissions, ErrPermissionDenied
 			}
-			return ctx.Permissions().Permissions, nil
+			return ctx.Permissions().Permissions, nextAuth.getNextAuth(ctx)
 		}
 	}
 	return config

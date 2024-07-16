@@ -9,7 +9,7 @@ import (
 // PasswordAuth returns a functional option that sets PasswordHandler on the server.
 func PasswordAuth(fn PasswordHandler) Option {
 	return func(srv *Server) error {
-		srv.PasswordHandler = fn
+		srv.AuthHandlers.PasswordHandler = fn
 		return nil
 	}
 }
@@ -17,7 +17,7 @@ func PasswordAuth(fn PasswordHandler) Option {
 // PublicKeyAuth returns a functional option that sets PublicKeyHandler on the server.
 func PublicKeyAuth(fn PublicKeyHandler) Option {
 	return func(srv *Server) error {
-		srv.PublicKeyHandler = fn
+		srv.AuthHandlers.PublicKeyHandler = fn
 		return nil
 	}
 }
@@ -44,7 +44,7 @@ func HostKeyFile(filepath string) Option {
 
 func KeyboardInteractiveAuth(fn KeyboardInteractiveHandler) Option {
 	return func(srv *Server) error {
-		srv.KeyboardInteractiveHandler = fn
+		srv.AuthHandlers.KeyboardInteractiveHandler = fn
 		return nil
 	}
 }

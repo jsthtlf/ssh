@@ -42,13 +42,13 @@ type NoClientAuthHandler func(ctx Context) error
 type BannerHandler func(ctx Context) string
 
 // PublicKeyHandler is a callback for performing public key authentication.
-type PublicKeyHandler func(ctx Context, key PublicKey) bool
+type PublicKeyHandler func(ctx Context, key PublicKey) (bool, AuthHandlers)
 
 // PasswordHandler is a callback for performing password authentication.
-type PasswordHandler func(ctx Context, password string) bool
+type PasswordHandler func(ctx Context, password string) (bool, AuthHandlers)
 
 // KeyboardInteractiveHandler is a callback for performing keyboard-interactive authentication.
-type KeyboardInteractiveHandler func(ctx Context, challenger gossh.KeyboardInteractiveChallenge) bool
+type KeyboardInteractiveHandler func(ctx Context, challenger gossh.KeyboardInteractiveChallenge) (bool, AuthHandlers)
 
 // PtyCallback is a hook for allowing PTY sessions.
 type PtyCallback func(ctx Context, pty Pty) bool

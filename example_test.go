@@ -15,8 +15,8 @@ func ExampleListenAndServe() {
 
 func ExamplePasswordAuth() {
 	ssh.ListenAndServe(":2222", nil,
-		ssh.PasswordAuth(func(ctx ssh.Context, pass string) bool {
-			return pass == "secret"
+		ssh.PasswordAuth(func(ctx ssh.Context, pass string) (bool, ssh.AuthHandlers) {
+			return pass == "secret", ssh.AuthHandlers{}
 		}),
 	)
 }
@@ -27,10 +27,10 @@ func ExampleNoPty() {
 
 func ExamplePublicKeyAuth() {
 	ssh.ListenAndServe(":2222", nil,
-		ssh.PublicKeyAuth(func(ctx ssh.Context, key ssh.PublicKey) bool {
+		ssh.PublicKeyAuth(func(ctx ssh.Context, key ssh.PublicKey) (bool, ssh.AuthHandlers) {
 			data, _ := os.ReadFile("/path/to/allowed/key.pub")
 			allowed, _, _, _, _ := ssh.ParseAuthorizedKey(data)
-			return ssh.KeysEqual(key, allowed)
+			return ssh.KeysEqual(key, allowed), ssh.AuthHandlers{}
 		}),
 	)
 }

@@ -32,14 +32,14 @@ func TestPasswordAuth(t *testing.T) {
 			gossh.Password(testPass),
 		},
 		HostKeyCallback: gossh.InsecureIgnoreHostKey(),
-	}, PasswordAuth(func(ctx Context, password string) bool {
+	}, PasswordAuth(func(ctx Context, password string) (bool, AuthHandlers) {
 		if ctx.User() != testUser {
 			t.Fatalf("user = %#v; want %#v", ctx.User(), testUser)
 		}
 		if password != testPass {
 			t.Fatalf("user = %#v; want %#v", password, testPass)
 		}
-		return true
+		return true, AuthHandlers{}
 	}))
 	defer cleanup()
 	if err := session.Run(""); err != nil {
@@ -51,8 +51,8 @@ func TestPasswordAuthBadPass(t *testing.T) {
 	t.Parallel()
 	l := newLocalListener()
 	srv := &Server{Handler: func(s Session) {}}
-	srv.SetOption(PasswordAuth(func(ctx Context, password string) bool {
-		return false
+	srv.SetOption(PasswordAuth(func(ctx Context, password string) (bool, AuthHandlers) {
+		return false, AuthHandlers{}
 	}))
 	go srv.serveOnce(l)
 	_, err := gossh.Dial("tcp", l.Addr().String(), &gossh.ClientConfig{
@@ -93,8 +93,8 @@ func TestConnWrapping(t *testing.T) {
 			gossh.Password("testpass"),
 		},
 		HostKeyCallback: gossh.InsecureIgnoreHostKey(),
-	}, PasswordAuth(func(ctx Context, password string) bool {
-		return true
+	}, PasswordAuth(func(ctx Context, password string) (bool, AuthHandlers) {
+		return true, AuthHandlers{}
 	}), WrapConn(func(ctx Context, conn net.Conn) net.Conn {
 		wrapped = &wrappedConn{conn, 0}
 		return wrapped

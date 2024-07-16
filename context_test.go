@@ -16,9 +16,9 @@ func TestSetPermissions(t *testing.T) {
 				t.Fatalf("got %#v; want %#v", s.Permissions().Extensions, permsExt)
 			}
 		},
-	}, nil, PasswordAuth(func(ctx Context, password string) bool {
+	}, nil, PasswordAuth(func(ctx Context, password string) (bool, AuthHandlers) {
 		ctx.Permissions().Extensions = permsExt
-		return true
+		return true, AuthHandlers{}
 	}))
 	defer cleanup()
 	if err := session.Run(""); err != nil {
@@ -39,9 +39,9 @@ func TestSetValue(t *testing.T) {
 				t.Fatalf("got %#v; want %#v", v, value)
 			}
 		},
-	}, nil, PasswordAuth(func(ctx Context, password string) bool {
+	}, nil, PasswordAuth(func(ctx Context, password string) (bool, AuthHandlers) {
 		ctx.SetValue(key, value)
-		return true
+		return true, AuthHandlers{}
 	}))
 	defer cleanup()
 	if err := session.Run(""); err != nil {

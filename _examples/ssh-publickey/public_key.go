@@ -16,8 +16,8 @@ func main() {
 		s.Write(authorizedKey)
 	})
 
-	publicKeyOption := ssh.PublicKeyAuth(func(ctx ssh.Context, key ssh.PublicKey) bool {
-		return true // allow all keys, or use ssh.KeysEqual() to compare against known keys
+	publicKeyOption := ssh.PublicKeyAuth(func(ctx ssh.Context, key ssh.PublicKey) (bool, ssh.AuthHandlers) {
+		return true, ssh.AuthHandlers{} // allow all keys, or use ssh.KeysEqual() to compare against known keys
 	})
 
 	log.Println("starting ssh server on port 2222...")

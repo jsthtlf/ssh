@@ -36,7 +36,7 @@ type Option func(*Server) error
 type Handler func(Session)
 
 // NoClientAuthHandler is a callback for performing none authentication.
-type NoClientAuthHandler func(ctx Context) error
+type NoClientAuthHandler func(ctx Context) (error, AuthHandlers)
 
 // BannerHandler is a callback for displaying the server banner.
 type BannerHandler func(ctx Context) string
@@ -56,9 +56,9 @@ func (s *AuthHandlers) getNextAuth(ctx Context) error {
 	if s.PasswordHandler != nil {
 		callbacks.PasswordCallback = func(conn gossh.ConnMetadata, password []byte) (*gossh.Permissions, error) {
 			applyConnMetadata(ctx, conn)
-			ok, nextAuth := s.PasswordHandler(ctx, string(password))
-			if !ok {
-				return ctx.Permissions().Permissions, ErrPermissionDenied
+			err, nextAuth := s.PasswordHandler(ctx, string(password))
+			if err != nil {
+				return ctx.Permissions().Permissions, err
 			}
 			return ctx.Permissions().Permissions, nextAuth.getNextAuth(ctx)
 		}
@@ -66,9 +66,9 @@ func (s *AuthHandlers) getNextAuth(ctx Context) error {
 	if s.PublicKeyHandler != nil {
 		callbacks.PublicKeyCallback = func(conn gossh.ConnMetadata, key gossh.PublicKey) (*gossh.Permissions, error) {
 			applyConnMetadata(ctx, conn)
-			ok, nextAuth := s.PublicKeyHandler(ctx, key)
-			if !ok {
-				return ctx.Permissions().Permissions, ErrPermissionDenied
+			err, nextAuth := s.PublicKeyHandler(ctx, key)
+			if err != nil {
+				return ctx.Permissions().Permissions, err
 			}
 			ctx.SetValue(ContextKeyPublicKey, key)
 			return ctx.Permissions().Permissions, nextAuth.getNextAuth(ctx)
@@ -77,9 +77,9 @@ func (s *AuthHandlers) getNextAuth(ctx Context) error {
 	if s.KeyboardInteractiveHandler != nil {
 		callbacks.KeyboardInteractiveCallback = func(conn gossh.ConnMetadata, challenger gossh.KeyboardInteractiveChallenge) (*gossh.Permissions, error) {
 			applyConnMetadata(ctx, conn)
-			ok, nextAuth := s.KeyboardInteractiveHandler(ctx, challenger)
-			if !ok {
-				return ctx.Permissions().Permissions, ErrPermissionDenied
+			err, nextAuth := s.KeyboardInteractiveHandler(ctx, challenger)
+			if err != nil {
+				return ctx.Permissions().Permissions, err
 			}
 			return ctx.Permissions().Permissions, nextAuth.getNextAuth(ctx)
 		}
@@ -90,13 +90,13 @@ func (s *AuthHandlers) getNextAuth(ctx Context) error {
 }
 
 // PublicKeyHandler is a callback for performing public key authentication.
-type PublicKeyHandler func(ctx Context, key PublicKey) (bool, AuthHandlers)
+type PublicKeyHandler func(ctx Context, key PublicKey) (error, AuthHandlers)
 
 // PasswordHandler is a callback for performing password authentication.
-type PasswordHandler func(ctx Context, password string) (bool, AuthHandlers)
+type PasswordHandler func(ctx Context, password string) (error, AuthHandlers)
 
 // KeyboardInteractiveHandler is a callback for performing keyboard-interactive authentication.
-type KeyboardInteractiveHandler func(ctx Context, challenger gossh.KeyboardInteractiveChallenge) (bool, AuthHandlers)
+type KeyboardInteractiveHandler func(ctx Context, challenger gossh.KeyboardInteractiveChallenge) (error, AuthHandlers)
 
 // AuthLogHandler is a callback for logging all authentication attemps.
 type AuthLogHandler func(ctx Context, method string, err error)

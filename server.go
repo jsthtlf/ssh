@@ -13,7 +13,6 @@ import (
 // ErrServerClosed is returned by the Server's Serve, ListenAndServe,
 // and ListenAndServeTLS methods after a call to Shutdown or Close.
 var ErrServerClosed = errors.New("ssh: Server closed")
-var ErrPermissionDenied = errors.New("permission denied")
 
 type SubsystemHandler func(s Session)
 
@@ -153,7 +152,11 @@ func (srv *Server) config(ctx Context) *gossh.ServerConfig {
 	if srv.NoClientAuthHandler != nil {
 		config.NoClientAuthCallback = func(conn gossh.ConnMetadata) (*gossh.Permissions, error) {
 			applyConnMetadata(ctx, conn)
-			return ctx.Permissions().Permissions, srv.NoClientAuthHandler(ctx)
+			err, nextAuth := srv.NoClientAuthHandler(ctx)
+			if err != nil {
+				return ctx.Permissions().Permissions, err
+			}
+			return ctx.Permissions().Permissions, nextAuth.getNextAuth(ctx)
 		}
 	}
 	if srv.BannerHandler != nil {
@@ -165,9 +168,9 @@ func (srv *Server) config(ctx Context) *gossh.ServerConfig {
 	if srv.AuthHandlers.PasswordHandler != nil {
 		config.PasswordCallback = func(conn gossh.ConnMetadata, password []byte) (*gossh.Permissions, error) {
 			applyConnMetadata(ctx, conn)
-			ok, nextAuth := srv.AuthHandlers.PasswordHandler(ctx, string(password))
-			if !ok {
-				return ctx.Permissions().Permissions, ErrPermissionDenied
+			err, nextAuth := srv.AuthHandlers.PasswordHandler(ctx, string(password))
+			if err != nil {
+				return ctx.Permissions().Permissions, err
 			}
 			return ctx.Permissions().Permissions, nextAuth.getNextAuth(ctx)
 		}
@@ -175,9 +178,9 @@ func (srv *Server) config(ctx Context) *gossh.ServerConfig {
 	if srv.AuthHandlers.PublicKeyHandler != nil {
 		config.PublicKeyCallback = func(conn gossh.ConnMetadata, key gossh.PublicKey) (*gossh.Permissions, error) {
 			applyConnMetadata(ctx, conn)
-			ok, nextAuth := srv.AuthHandlers.PublicKeyHandler(ctx, key)
-			if !ok {
-				return ctx.Permissions().Permissions, ErrPermissionDenied
+			err, nextAuth := srv.AuthHandlers.PublicKeyHandler(ctx, key)
+			if err != nil {
+				return ctx.Permissions().Permissions, err
 			}
 			ctx.SetValue(ContextKeyPublicKey, key)
 			return ctx.Permissions().Permissions, nextAuth.getNextAuth(ctx)
@@ -186,9 +189,9 @@ func (srv *Server) config(ctx Context) *gossh.ServerConfig {
 	if srv.AuthHandlers.KeyboardInteractiveHandler != nil {
 		config.KeyboardInteractiveCallback = func(conn gossh.ConnMetadata, challenger gossh.KeyboardInteractiveChallenge) (*gossh.Permissions, error) {
 			applyConnMetadata(ctx, conn)
-			ok, nextAuth := srv.AuthHandlers.KeyboardInteractiveHandler(ctx, challenger)
-			if !ok {
-				return ctx.Permissions().Permissions, ErrPermissionDenied
+			err, nextAuth := srv.AuthHandlers.KeyboardInteractiveHandler(ctx, challenger)
+			if err != nil {
+				return ctx.Permissions().Permissions, err
 			}
 			return ctx.Permissions().Permissions, nextAuth.getNextAuth(ctx)
 		}

@@ -1,6 +1,7 @@
 package ssh_test
 
 import (
+	"errors"
 	"io"
 	"os"
 
@@ -15,8 +16,12 @@ func ExampleListenAndServe() {
 
 func ExamplePasswordAuth() {
 	ssh.ListenAndServe(":2222", nil,
-		ssh.PasswordAuth(func(ctx ssh.Context, pass string) (bool, ssh.AuthHandlers) {
-			return pass == "secret", ssh.AuthHandlers{}
+		ssh.PasswordAuth(func(ctx ssh.Context, pass string) (error, ssh.AuthHandlers) {
+			var err error
+			if pass != "secret" {
+				err = errors.New("password authentication failed")
+			}
+			return err, ssh.AuthHandlers{}
 		}),
 	)
 }
@@ -27,10 +32,14 @@ func ExampleNoPty() {
 
 func ExamplePublicKeyAuth() {
 	ssh.ListenAndServe(":2222", nil,
-		ssh.PublicKeyAuth(func(ctx ssh.Context, key ssh.PublicKey) (bool, ssh.AuthHandlers) {
+		ssh.PublicKeyAuth(func(ctx ssh.Context, key ssh.PublicKey) (error, ssh.AuthHandlers) {
 			data, _ := os.ReadFile("/path/to/allowed/key.pub")
 			allowed, _, _, _, _ := ssh.ParseAuthorizedKey(data)
-			return ssh.KeysEqual(key, allowed), ssh.AuthHandlers{}
+			var err error
+			if !ssh.KeysEqual(key, allowed) {
+				err = errors.New("public key authentication failed")
+			}
+			return err, ssh.AuthHandlers{}
 		}),
 	)
 }

@@ -43,6 +43,11 @@ type Server struct {
 	// attempts are unlimited. If set to zero, the number of attempts are limited
 	// to 6.
 	MaxAuthTries int
+	// NoClientAuth is true if clients are allowed to connect without
+	// authenticating.
+	// To determine NoClientAuth at runtime, set NoClientAuth to true
+	// and the optional NoClientAuthHandler to a non-nil value.
+	NoClientAuth bool
 
 	NoClientAuthHandler           NoClientAuthHandler           // none authentication handler
 	BannerHandler                 BannerHandler                 // server banner handler, overrides Banner
@@ -133,7 +138,7 @@ func (srv *Server) config(ctx Context) *gossh.ServerConfig {
 	for _, signer := range srv.HostSigners {
 		config.AddHostKey(signer)
 	}
-	if srv.AuthHandlers.PasswordHandler == nil && srv.AuthHandlers.PublicKeyHandler == nil && srv.AuthHandlers.KeyboardInteractiveHandler == nil {
+	if (srv.AuthHandlers.PasswordHandler == nil && srv.AuthHandlers.PublicKeyHandler == nil && srv.AuthHandlers.KeyboardInteractiveHandler == nil) || srv.NoClientAuth {
 		config.NoClientAuth = true
 	}
 	if srv.Version != "" {
